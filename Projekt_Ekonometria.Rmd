@@ -1,0 +1,151 @@
+---
+title: "Ekonometria Projekt"
+author: "Daniel Kłodowski, Jan Kawalerski, Mikołaj Kita"
+date: "2026-04-16"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+# Projekt: Analiza Rynku Nieruchomości na podstawie danych GUS
+
+## 1. Wczytanie i przygotowanie danych
+
+Na początku ładujemy potrzebne pakiety i wczytujemy nasz zbiór z GUS.
+Sprawdzamy również podstawowe podsumowanie wczytanych danych.
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+data<-read.csv2("DaneGUS.csv")
+summary(data)
+```
+
+Zauważamy, że dane liczbowe zostały wczytane jako tekst ze względu na
+polskie formatowanie. Używamy pętli, aby oczyścić kolumny od trzeciej do
+ostatniej
+
+```{r}
+for(i in 3:ncol(data)) {
+  data[, i] <- gsub("\\s+", "", data[, i])
+  data[, i] <- gsub(",", ".", data[, i])
+  data[, i] <- as.numeric(data[, i])
+}
+```
+
+Powyższa pętla kolejno usuwa spacje w tysiącach, zamienia polskie
+przecinki na kropki dziesiętne i wymusza konwersję na typ numeryczny.
+
+## 2. Analiza rozkładów
+
+Rozpoczynamy od wyodrębnienia wyłącznie zmiennych numerycznych, aby móc
+na nich prowadzić dalszą analizę statystyczną.
+
+```{r}
+dane_numeryczne <- data[, 3:ncol(data)]
+```
+
+Następnie badamy rozkład naszej zmiennej objaśnianej, generując jej
+histogram.
+
+```{r}
+hist(data$Cenam2, 
+     main = "Histogram zmiennej Cenam2", 
+     xlab = "Cena za m2 [zł]", 
+     ylab = "Częstość",
+     col = "lightblue")
+```
+
+Wykres ten obrazuje rozkład empiryczny cen mieszkań. Aby dodatkowo
+sprawdzić obecność potencjalnych wartości odstających, rysujemy wykres
+pudełkowy.
+
+```{r}
+boxplot(data$Cenam2, 
+        main = "Wykres pudełkowy dla zmiennej Cenam2",
+        ylab = "Cena za m2 [zł]")
+```
+
+Pojedyncze kropki powyżej wąsów na wykresie pudełkowym wskazują na
+obecność bardzo drogich powiatów (najpewniej największych aglomeracji),
+które znacznie odbiegają od średniej rynkowej.
+
+## 3. Analiza zależności i korelacji Aby wstępnie ocenić, które zmienne najsilniej wpływają na cenę nieruchomości,
+
+obliczamy macierz korelacji liniowej Pearsona.
+
+```{r}
+macierz_korelacji <- cor(dane_numeryczne)
+```
+
+Dla lepszej czytelności wizualizujemy te wyniki w formie graficznej przy
+użyciu odpowiedniego pakietu.
+
+```{r message=FALSE, warning=FALSE}
+library(corrplot)
+
+corrplot(macierz_korelacji, 
+         method = "number", 
+         type = "upper", 
+         tl.col = "black",
+         tl.cex = 0.8,
+         title = "Macierz korelacji zmiennych",
+         mar = c(0,0,2,0))
+```
+
+## Wnioski z eksploracji danych
+
+Z powyższej macierzy wynika, że cena za m² najsilniej dodatnio koreluje
+z liczbą firm (r=0.50), gęstością zaludnienia (0.43) i wynagrodzeniami
+(0.38), a ujemnie z bezrobociem (-0.38). Widać również silną zależność
+(0.69) między gęstością zaludnienia a liczbą firm.
+
+## 4. Podział na zbiór treningowy i testowy
+
+Dzielimy nasz zbiór danych na dwie części: treningową oraz testową.
+Zbiór treningowy (70% obserwacji) posłuży nam do estymacji parametrów
+modelu, natomiast zbiór testowy (pozostałe 30%) wykorzystamy w
+późniejszych etapach do oceny jakości prognoz ex post. Ustawiamy ziarno
+losowości, aby nasz podział był powtarzalny przy każdym uruchomieniu
+skryptu
+
+```{r}
+set.seed(123)
+train <- data %>% slice_sample(prop = 0.7)
+test <- data %>% anti_join(train, by = "Kod")
+```
+
+## 5. Dobór zmiennych i estymacja modelu wstępnego
+
+Naszym celem jest zbudowanie modelu objaśniającego kształtowanie się cen
+nieruchomości. Jako zmienną objaśnianą (Y) przyjmujemy cenę za metr
+kwadratowy (Cenam2). W pierwszym etapie estymujemy pełny model,
+uwzględniając wszystkie dostępne zmienne numeryczne jako potencjalne
+zmienne objaśniające.
+
+Estymacji parametrów dokonujemy Klasyczną Metodą Najmniejszych Kwadratów
+z wykorzystaniem wyłącznie zbioru treningowego.
+
+```{r}
+model <- lm(Cenam2 ~ Bezrobocie + Wynagrodzenia + Ludnosckm2 + Firmy1000os, data = train)
+summary(model)
+```
+
+Wyniki estymacji KMNK są bardzo obiecujące – model jest istotny
+globalnie, a każda z wprowadzonych zmiennych okazała się istotna
+statystycznie (p-value \< 0.05). Na tym etapie nie musimy więc usuwać
+żadnej z nich.
+
+Zgodnie z zasadą ceteris paribus, otrzymane parametry oznaczają, że:
+
+-Bezrobocie: wzrost o 1 p.p. obniża cenę metra kwadratowego średnio o
+ok. 54 zł.
+
+-Wynagrodzenia: wzrost średniej pensji o 1 zł podnosi cenę za m2 o ok.
+0,38 zł.
+
+-Gęstość zaludnienia: każda dodatkowa osoba na km² to wzrost ceny o ok.
+0,58 zł.
+
+-Firmy:jedna dodatkowa firma na 1000 mieszkańców podbija cenę za m2
+średnio o 132 zł.
