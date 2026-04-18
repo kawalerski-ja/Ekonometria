@@ -18,6 +18,8 @@ Sprawdzamy również podstawowe podsumowanie wczytanych danych.
 ```{r message=FALSE, warning=FALSE}
 library(tidyverse)
 data<-read.csv2("DaneGUS.csv")
+data <- data %>%
+  relocate(Cenam2, .after = last_col())
 summary(data)
 ```
 
@@ -113,6 +115,9 @@ skryptu
 set.seed(123)
 train <- data %>% slice_sample(prop = 0.7)
 test <- data %>% anti_join(train, by = "Kod")
+
+train <- train[, 3:ncol(train)]
+test <- test[, 3:ncol(test)]
 ```
 
 ## 5. Dobór zmiennych i estymacja modelu wstępnego
@@ -149,3 +154,152 @@ ok. 54 zł.
 
 -Firmy:jedna dodatkowa firma na 1000 mieszkańców podbija cenę za m2
 średnio o 132 zł.
+
+## Diagnostyka i poprawa modelu
+
+Poniżej została zastosowana metoda Hellwiga, w celu znaleznienia kombinacji
+zmienncych objaśniających, niosących największą wartość informacyjną.  
+
+```{r}
+R0 <- cor(train)[5,-5] # korelacje zmiennych objaśniających z objaśnianą
+R <- cor(train)[-5, -5] # korelacje pomiędzy zmiennymi objaśniającymi
+
+comb <- expand.grid(rep(list(c(T,F)), 4)) # wszystkie kombinacje
+
+hellwig <- function(idx){
+  if(sum(idx) == 0) return(0)
+  
+  selected <- which(idx)
+  
+  H <- 0 # pojemność integralna kombinacji nośników informacji
+  
+  for(i in selected){
+    denom <- 0 # suma korelacji pomiędzy zmiennymi objaśniającymi 
+    # w danej kombinacji
+    
+    for(j in selected){
+      denom <- denom + abs(R[i,j])
+    }
+    
+    hi <- (R0[i]^2) / denom # indywidualna pojemność nośnika informacji
+    H <- H + hi
+  }
+  
+  return(H)
+}
+
+H_values <- apply(comb, 1, hellwig)
+
+best_comb_index <- which.max(H_values)
+best_combination_numbers <- which(comb[best_comb_index, ] == 1)
+
+# wyniki
+H_values[best_comb_index]
+colnames(train)[-5][best_combination_numbers]
+```
+
+Wynik potwierdza, że należy użyć wszystkich zmiennych w modelu.
+
+### Liniowość modelu
+
+Założyliśmy, że wszystkie zależności między zmienną objaśnianą a objaśniającymi
+są liniowe. Musimy jednak sprawdzić, czy rzeczywiście tak jest.
+
+```{r}
+pairs(dane_numeryczne)
+```
+
+W przypadku pary cena-firmy zależność kształtuje się na podobną do liniowej,
+jednak w przypadku pozostałych zmiennych nie jest już ona tak oczywista.  
+
+W kolejnym kroku zostną więc przetesotowane inne postacie zależności. W tym celu
+został użyty test Ramsey'a (RESET).  
+H0 - model jest liniowy
+
+```{r}
+resettest(model)
+```
+
+Na poziomie istotności 5% okazuje się, że model nie jest jednoznacznie liniowy. 
+P-value nie jest jednak skrajnie mały, więc w celu uniknięcia nadmiernego
+skomplikowania postaci modelu, pierwotna forma została pozostawiona.
+
+### Współliniowość zmiennych objaśniających
+
+```{r}
+model <- lm(Cenam2 ~ Bezrobocie + Wynagrodzenia + Ludnosckm2 + Firmy1000os, data = train)
+
+library(car)
+vif(model)
+```
+
+Wszystkie mniejsze niż 5, więc nie są wyraźnie współliniowe.  
+
+Poniżej sprawdzono także losowość reszt, za pomocą testu serii.  
+H0 - reszty są losowe
+
+```{r}
+r = model.residuals
+library(randtests)
+runs.test(r)
+```
+
+### Normalność rozkładu reszt
+
+Normalność rozkładu reszt jest istotna dla poprawności wnioskowania 
+o istotności parametrów.  
+W celu zweryfikowania tego warunku, został użyty test Shapiro-Wilka.  
+H0 - dane mają rozkład normalny
+
+```{r}
+shapiro.test(r)
+```
+
+Test wykazał, że rozkład reszt nie jest normalny.
+
+```{r}
+hist(r)
+```
+
+Prawostronna skośność rozkładu reszt sugeruje, że w danych występują obserwacje, 
+dla których wartości rzeczywiste są istotnie wyższe od wartości przewidywanych przez model.  
+Brak normalności rozkładu może zniekształcać wnioskowanie stystyczne, np. wynik
+testu F istotności modelu. Należy jednak zauważyć, że próba jest duża, co 
+niweluje ten problem.
+
+### Weryfikacja homoskedastyczności
+
+Kolejną ważną właściwością jest homoskedastyczność - stałość wariancji - będąca
+założeniem metody najmniejszych kwadratów.
+
+```{r}
+plot(model$fitted.values, model$residuals)
+```
+
+Do weryfikacji został użyty test White'a, który sprawdza, czy kwadraty reszt
+zależą liniowo lub nieliniowo od poziomu przewidywanego wyniku (regresja).  
+H0 - homoskedastyczność
+
+```{r}
+library(lmtest)
+
+train$y_dop = model$fitted.values
+bptest(model, ~y_dop + I(y_dop^2) + I(y_dop^3), data = train)
+```
+
+Test potwierdza, że nie ma istotnej zależności na poziomie 5%. Wynika z tego,
+że jest spełniony warunek homoskedastyczności.  
+
+## Analiza ex-post
+
+
+
+
+
+
+
+
+
+
+
+
