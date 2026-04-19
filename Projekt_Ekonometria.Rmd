@@ -8,6 +8,13 @@ editor_options:
     wrap: 72
 ---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  warning = FALSE,
+  message = FALSE
+)
+```
+
 # Projekt: Analiza Rynku Nieruchomości na podstawie danych GUS
 
 ## 1. Wczytanie i przygotowanie danych
@@ -15,7 +22,7 @@ editor_options:
 Na początku ładujemy potrzebne pakiety i wczytujemy nasz zbiór z GUS.
 Sprawdzamy również podstawowe podsumowanie wczytanych danych.
 
-```{r message=FALSE, warning=FALSE}
+```{r}
 library(tidyverse)
 data<-read.csv2("DaneGUS.csv")
 data <- data %>%
@@ -70,7 +77,22 @@ boxplot(data$Cenam2,
 
 Pojedyncze kropki powyżej wąsów na wykresie pudełkowym wskazują na
 obecność bardzo drogich powiatów (najpewniej największych aglomeracji),
-które znacznie odbiegają od średniej rynkowej.
+które znacznie odbiegają od średniej rynkowej.  
+
+Poniżej zostały sprawdzone potencjalne nieprawidłowe wartości w danych.
+
+```{r}
+summary(dane_numeryczne)
+```
+
+Widzimy, że zdarzają się wartości 0 w kolumnach takich jak wynagrodzenia lub cena. 
+Oznacza to jednak brak danych, niż rzeczywista obserwacja tej zmiennej. Obserwacje 
+z niemożliwymi wartościami zostały więc usunięte.
+
+```{r}
+data <- data[!apply(data[c("Wynagrodzenia", "Cenam2")] <= 0, 1, any), ]
+dane_numeryczne <- data[, 3:ncol(data)]
+```
 
 ## 3. Analiza zależności i korelacji Aby wstępnie ocenić, które zmienne najsilniej wpływają na cenę nieruchomości,
 
@@ -155,14 +177,15 @@ ok. 54 zł.
 -Firmy:jedna dodatkowa firma na 1000 mieszkańców podbija cenę za m2
 średnio o 132 zł.
 
-## Diagnostyka i poprawa modelu
+## 6. Diagnostyka i poprawa modelu
 
 Poniżej została zastosowana metoda Hellwiga, w celu znaleznienia kombinacji
 zmienncych objaśniających, niosących największą wartość informacyjną.  
 
 ```{r}
-R0 <- cor(train)[5,-5] # korelacje zmiennych objaśniających z objaśnianą
-R <- cor(train)[-5, -5] # korelacje pomiędzy zmiennymi objaśniającymi
+corre = cor(train)
+R0 <- corre["Cenam2", colnames(corre) != "Cenam2"] # korelacje zmiennych objaśniających z objaśnianą
+R <- corre[colnames(corre) != "Cenam2", colnames(corre) != "Cenam2"] # korelacje pomiędzy zmiennymi objaśniającymi
 
 comb <- expand.grid(rep(list(c(T,F)), 4)) # wszystkie kombinacje
 
@@ -195,7 +218,7 @@ best_combination_numbers <- which(comb[best_comb_index, ] == 1)
 
 # wyniki
 H_values[best_comb_index]
-colnames(train)[-5][best_combination_numbers]
+colnames(train)[colnames(train) != "Cenam2"][best_combination_numbers]
 ```
 
 Wynik potwierdza, że należy użyć wszystkich zmiennych w modelu.
@@ -212,17 +235,31 @@ pairs(dane_numeryczne)
 W przypadku pary cena-firmy zależność kształtuje się na podobną do liniowej,
 jednak w przypadku pozostałych zmiennych nie jest już ona tak oczywista.  
 
-W kolejnym kroku zostną więc przetesotowane inne postacie zależności. W tym celu
-został użyty test Ramsey'a (RESET).  
-H0 - model jest liniowy
+W kolejnym kroku należy przetestować inne postacie zależności. W tym celu 
+zastosowano test Ramsey'a (RESET), polegający na rozszerzeniu modelu o dodatkowe 
+zmienne w postaci potęg wartości dopasowanych przez pierwotny model 
+(tu: drugiego i trzeciego stopnia).  
+H0 - model jest poprawne wyspecyfikowany
 
 ```{r}
-resettest(model)
+library(lmtest)
+resettest(model, power = 2:3, type = "fitted")
 ```
 
-Na poziomie istotności 5% okazuje się, że model nie jest jednoznacznie liniowy. 
-P-value nie jest jednak skrajnie mały, więc w celu uniknięcia nadmiernego
-skomplikowania postaci modelu, pierwotna forma została pozostawiona.
+Na poziomie istotności 5% odrzucamy hipotezę zerową testu RESET, co wskazuje na 
+niepoprawną specyfikację modelu. Może to oznaczać pominięcie istotnych zmiennych 
+lub niewłaściwą postać funkcyjną (np. brak nieliniowości).
+
+Przeprowadzono również test RESET w wersji z dodaniem potęg zmiennych objaśniających.
+
+```{r}
+resettest(model, type = "regressor", power = 2:3)
+```
+Wynik testu nie wskazuje na istotność tych składników, co sugeruje, że ewentualna 
+niepoprawna specyfikacja modelu nie wynika z prostych nieliniowości w postaci 
+kwadratów zmiennych.  
+Mimo istotności pierwszego testu RESET, zdecydowano się pozostawić pierwotną 
+postać modelu ze względu na jego prostotę i interpretowalność.
 
 ### Współliniowość zmiennych objaśniających
 
@@ -239,10 +276,62 @@ Poniżej sprawdzono także losowość reszt, za pomocą testu serii.
 H0 - reszty są losowe
 
 ```{r}
-r = model.residuals
+r = model$residuals
 library(randtests)
 runs.test(r)
 ```
+
+Nie odrzucono hipotezy zerowej na poziomie istotności 5%, co oznacza, że reszty 
+są losowe.
+
+## Interakcje między zmiennymi
+
+Poniżej sprawdzono, czy istnieją interakcje wśród zmiennych objaśniających, czyli
+czy wpłych jednej zmiennej na objaśnianą zależy od poziomu innej zmiennej.
+
+```{r}
+model_i <- lm(Cenam2 ~ Bezrobocie*Wynagrodzenia + Ludnosckm2 + Firmy1000os, data = train)
+summary(model_i)$adj.r.squared
+```
+
+```{r}
+model_i <- lm(Cenam2 ~ Bezrobocie + Wynagrodzenia*Ludnosckm2 + Firmy1000os, data = train)
+summary(model_i)$adj.r.squared
+```
+
+```{r}
+model_i <- lm(Cenam2 ~ Bezrobocie + Wynagrodzenia + Ludnosckm2*Firmy1000os, data = train)
+summary(model_i)$adj.r.squared
+```
+
+Najlepej dodasowany model wydaje się być z interakcją między wynagrodzeniami
+a ludnością.
+
+```{r}
+model_i <- lm(Cenam2 ~ Bezrobocie + Wynagrodzenia*Ludnosckm2 + Firmy1000os, data = train)
+summary(model_i)
+```
+
+Spada błąd standardowy i zwiększa się statystyka R kwadrat. Dodatkowo, interakcja 
+ta jest istotna na poziomie 0,1%.  
+Zastosowano test ANOVA w celu weryfikacji poprawy modelu, po dodaniu interakcji.  
+H0 - interakcja nie poprawia modelu
+
+```{r}
+anova(model, model_i)
+```
+
+Test potwierdza, że model z interakcją między zmiennymi Wynagrodzenia i Ludnosckm2
+jest istotnie lepszy od modelu bez tej interakcji na poziomie 0,1%.
+
+```{r}
+model <- model_i
+r <- model$residuals
+```
+
+Interpretacja tej interakcji prezentuje się następująco: wraz ze wzrostem 
+gęstości zaludnienia, wpływ wynagrodzeń na cenę mieszkań staje się silniejszy. 
+Każdy dodatkowy 1 mieszkaniec/km² zwiększa ten efekt o około 0.0007 zł.
 
 ### Normalność rozkładu reszt
 
@@ -267,7 +356,7 @@ Brak normalności rozkładu może zniekształcać wnioskowanie stystyczne, np. w
 testu F istotności modelu. Należy jednak zauważyć, że próba jest duża, co 
 niweluje ten problem.
 
-### Weryfikacja homoskedastyczności
+### Homoskedastyczność
 
 Kolejną ważną właściwością jest homoskedastyczność - stałość wariancji - będąca
 założeniem metody najmniejszych kwadratów.
@@ -281,17 +370,24 @@ zależą liniowo lub nieliniowo od poziomu przewidywanego wyniku (regresja).
 H0 - homoskedastyczność
 
 ```{r}
-library(lmtest)
-
 train$y_dop = model$fitted.values
 bptest(model, ~y_dop + I(y_dop^2) + I(y_dop^3), data = train)
+train <- subset(train, select = -y_dop)
 ```
 
 Test potwierdza, że nie ma istotnej zależności na poziomie 5%. Wynika z tego,
 że jest spełniony warunek homoskedastyczności.  
 
-## Analiza ex-post
+#### Wartości odstające
 
+Co więcej, wykres reszt względem wartości dopasowanych nie wskazuje na wyraźną 
+nieliniową strukturę zależności, co sugeruje, że liniowa postać modelu jest 
+w dużym stopniu odpowiednia.  
+Można zauważyć też, że występują wartości potencjalnie ekstremalne, na które 
+metoda najmniejszych kwadratów jest bardzo wrażliwa. W tym przypadku jednak, nie
+zostaną usunięte, gdyż nie są one wynikiem błędu.
+
+## 7. Analiza ex-post
 
 
 
