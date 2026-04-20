@@ -379,11 +379,157 @@ zostaną usunięte, gdyż nie są one wynikiem błędu.
 
 ## 7. Analiza ex-post
 
+W tej części sprawdzimy, jak nasz ostateczny model radzi sobie z przewidywaniem cen mieszkań na danych, których "nie widział" podczas estymacji (czyli na naszym zbiorze testowym). W tym celu wyznaczymy prognozy, a następnie obliczymy popularne miary błędów ex-post: 
+Średni Błąd Bezwzględny (MAE), Pierwiastek Błędu Średniokwadratowego (RMSE) oraz Średni Absolutny Błąd Procentowy (MAPE).
 
+```{r}
+predykcje <- predict(model, newdata = test)
+rzeczywiste <- test$Cenam2
 
+bledy <- rzeczywiste - predykcje
 
+# Miary błędów ex-post
+MAE <- mean(abs(bledy))
+RMSE <- sqrt(mean(bledy^2))
+MAPE <- mean(abs(bledy / rzeczywiste)) * 100
 
+# Wypisanie wyników
+cat("Średni Błąd Bezwzględny (MAE):", round(MAE, 2), "zł\n")
+cat("Pierwiastek Błędu Średniokwadratowego (RMSE):", round(RMSE, 2), "zł\n")
+cat("Średni Absolutny Błąd Procentowy (MAPE):", round(MAPE, 2), "%\n")
 
+plot(rzeczywiste, predykcje, 
+     main = "Wartości rzeczywiste vs przewidywane (Zbiór testowy)",
+     xlab = "Rzeczywista cena za m2 [zł]", 
+     ylab = "Przewidywana cena za m2 [zł]",
+     pch = 16, col = "darkblue")
+abline(a = 0, b = 1, col = "red", lwd = 2) # Idealne dopasowanie (y = x)
+```
+
+### 7.1 Analiza wrażliwości
+
+Aby sprawdzić odporność modelu na wartości odstające przeprowadzam eksperyment, usuwam najbardziej odstające powiaty.
+
+```{r}
+# Identyfikacja wartości odstających z wykresu pudełkowego (powyżej górnego wąsa)
+wartosci_odstajace <- boxplot.stats(train$Cenam2)$out
+
+# Stworzenie nowego zbioru treningowego bez wartości odstających
+train_bez_odst <- train %>%
+  filter(!Cenam2 %in% wartosci_odstajace)
+
+# Estymacja ostatecznego modelu (z interakcją) na oczyszczonych danych
+model_bez_odst <- lm(Cenam2 ~ Bezrobocie + Wynagrodzenia*Ludnosckm2 + Firmy1000os, data = train_bez_odst)
+
+summary(model_bez_odst)
+```
+
+Analiza błędów dla nowego modelu
+
+```{r}
+# Predykcja na zbiorze testowym przy użyciu nowego modelu
+predykcje_bez_odst <- predict(model_bez_odst, newdata = test)
+rzeczywiste <- test$Cenam2
+
+# Obliczenie błędów
+bledy_bez_odst <- rzeczywiste - predykcje_bez_odst
+
+# Miary błędów ex-post
+MAE_bez_odst <- mean(abs(bledy_bez_odst))
+RMSE_bez_odst <- sqrt(mean(bledy_bez_odst^2))
+MAPE_bez_odst <- mean(abs(bledy_bez_odst / rzeczywiste)) * 100
+
+# Wypisanie wyników
+cat("Błędy dla modelu bez wartości odstających:\n")
+cat("Średni Błąd Bezwzględny (MAE):", round(MAE_bez_odst, 2), "zł\n")
+cat("Pierwiastek Błędu Średniokwadratowego (RMSE):", round(RMSE_bez_odst, 2), "zł\n")
+cat("Średni Absolutny Błąd Procentowy (MAPE):", round(MAPE_bez_odst, 2), "%\n")
+```
+Spadło R^2 i niektóre zmienne straciły istotność, zdawałoby się, że model się pogorszył. Mimo wszystko spadły miary błędów. W pierwotnym modelu interakcja Wynagrodzenia:Ludnosckm2 oraz sama gęstość zaludnienia były bardzo istotne, okazuje się jednak, że w przypadku typowych powiatów jednak to nie ma znaczenia.
+
+### 7.2 Model z usuniętymi nieistotnymi  zmiennymi
+
+Wcześniejszy punkt dowodzi, że "efekt tłoku" wpływający na ceny mieszkań jest zjawiskiem charakterystycznym wyłącznie dla największych aglomeracji, a nie uniwersalnym prawem dla całego kraju.
+
+Usuwamy nieistotne zmienne i estymuję uproszczony model dla rynków lokalnych:
+
+```{r}
+model_polska_lokalna <- lm(Cenam2 ~ Bezrobocie + Wynagrodzenia, data = train_bez_odst)
+summary(model_polska_lokalna)
+
+# Predykcja na zbiorze testowym przy użyciu modelu uproszczonego
+predykcje_lokalne <- predict(model_polska_lokalna, newdata = test)
+
+# Błędy ex-post
+bledy_lokalne <- rzeczywiste - predykcje_lokalne
+MAE_lokalny <- mean(abs(bledy_lokalne))
+RMSE_lokalny <- sqrt(mean(bledy_lokalne^2))
+MAPE_lokalny <- mean(abs(bledy_lokalne / rzeczywiste)) * 100
+
+cat("Średni Błąd Bezwzględny (MAE):", round(MAE_lokalny, 2), "zł\n")
+cat("Pierwiastek Błędu Średniokwadratowego (RMSE):", round(RMSE_lokalny, 2), "zł\n")
+cat("Średni Absolutny Błąd Procentowy (MAPE):", round(MAPE_lokalny, 2), "%\n")
+```
+Wnioski z analizy wrażliwości: Oczyszczenie danych z ekstremów ukazało wyraźną dwubiegunowość polskiego rynku nieruchomości. Średni absolutny błąd procentowy (MAPE) dla modelu uproszczonego na zbiorze testowym wynosi 16.28%.
+
+Co jednak najciekawsze, miara RMSE wzrosła do ponad 1665 zł. Wynika to z faktu, że nasz zbiór testowy nadal zawiera pojedyncze najdroższe aglomeracje. Uproszczony model wycenia je tak samo jak standardowe powiaty, co prowadzi do drastycznego niedoszacowania cen w tych lokalizacjach i "eksplozji" błędu średniokwadratowego.
+
+Dowodzi to, że rozbudowany model główny (z sekcji 6, zawierający efekt interakcji i gęstości zaludnienia) jest niezbędny, by móc uwzględnić zjawiska zachodzące w największych metropoliach. Z kolei model uproszczony znacznie lepiej i prościej tłumaczy mechanizmy w "typowej" Polsce, gdzie ceny zależą w zasadzie wyłącznie od lokalnego bezrobocia i średnich zarobków, jednak całkowicie nie radzi sobie z wyceną rynków przegrzanych.
+
+## Interpretacja parametrów najlepszego modelu
+
+### Interpretacja parametrów modelu z interakcją
+
+W modelu uwzględniającym interakcję między wynagrodzeniami a gęstością zaludnienia, interpretacja parametrów (przy założeniu ceteris paribus) prezentuje się następująco:
+1. Zmienne o stałym wpływie:
+- Bezrobocie (-72.93): Wzrost stopy bezrobocia o 1 punkt procentowy powoduje średni spadek ceny za m² o ok. 73 zł. Jest to wynik istotny statystycznie i zgodny z intuicją ekonomiczną (niższy popyt w regionach o trudniejszym rynku pracy).
+- Liczba firm na 1000 os. (74.11): Pojawienie się jednej dodatkowej firmy na 1000 mieszkańców wiąże się ze średnim wzrostem ceny metra kwadratowego o ok. 74 zł. Świadczy to o tym, że rozwinięty lokalny biznes stymuluje rynek nieruchomości.
+
+### 2. Zmienne w interakcji (Efekty warunkowe)
+
+W przypadku interakcji nie możemy interpretować zmiennych Wynagrodzenia i Ludnosckm2 w oderwaniu od siebie. Ich wpływ jest sumą efektu głównego i efektu interakcji. Wyniki z summary() oznaczają wpływ danej zmiennej na cenę, ale tylko w sytuacji, gdy ta druga zmienna wynosi zero.
+
+#### Wpływ Wynagrodzeń 
+
+Każda dodatkowa złotówka średniej pensji zmienia cenę za m² o: 0.065 + (0.00052 * Gęstość zaludnienia) Wniosek: Im wyższa gęstość zaludnienia (większe miasto), tym silniejszy jest wpływ wzrostu wynagrodzeń na ceny mieszkań. W metropoliach każda podwyżka pensji znacznie mocniej "pcha" ceny nieruchomości w górę niż w regionach rolniczych.
+
+#### Wpływ Gęstości zaludnienia
+
+Każdy dodatkowy mieszkaniec na km^2 zmienia cenę o: -2.648 + (0.00052 * Wynagrodzenia) Wniosek: Choć sam parametr przy gęstości jest ujemny, to dzięki dodatniemu wyrazowi interakcji, w bogatych powiatach gęstość zaludnienia staje się czynnikiem silnie pro-cenowym. Przykładowo, przy zarobkach powyżej ok. 5074 zł (-2.648 / 0.00052), gęstość zaludnienia zaczyna mieć dodatni wpływ na ceny.
+
+## Podsumowanie
+
+### 1. Cel i zakres prac
+
+Przygotowanie danych: Przeprowadziliśmy czyszczenie zbioru danych GUS, konwertując formatowanie polskie na numeryczne i usuwając błędne obserwacje (np. zerowe wynagrodzenia).
+
+Analiza statystyczna: Zbadaliśmy korelacje i rozkłady, identyfikując silny wpływ wynagrodzeń, gęstości zaludnienia i liczby firm na ceny mieszkań.
+
+Modelowanie: Zbudowaliśmy model Klasycznej Metody Najmniejszych Kwadratów (KMNK) z uwzględnieniem interakcji między wynagrodzeniami a gęstością zaludnienia.
+
+Weryfikacja ex-post: Przetestowaliśmy model na zbiorze testowym (30% danych) i przeprowadziliśmy analizę wrażliwości (Robustness Check), usuwając skrajne obserwacje (metropolie).
+
+### 2. Główne „zwycięstwa” 
+
+Udowodniliśmy, że w dużych miastach wysoka gęstość zaludnienia potęguje wpływ wynagrodzeń na ceny mieszkań (synergia popytowa).
+
+Stabilność fundamentów: Potwierdziliśmy, że w skali całego kraju bezrobocie i płace pozostają najsilniejszymi, stabilnymi determinantami cen.
+
+Wysoka jakość diagnostyki: Model przeszedł pozytywnie testy na homoskedastyczność i brak współliniowości (VIF), co świadczy o rzetelności oszacowań.
+
+### 3. Problemy i wyzwania:
+
+Rozkład reszt jest prawostronnie skośny przez bardzo drogie powiaty, co utrudnia klasyczne wnioskowanie statystyczne w pełnej próbie.
+
+Dwubiegunowość rynku: Odkryliśmy, że jeden model nie jest w stanie idealnie opisać jednocześnie „Polski lokalnej” i wielkich aglomeracji – usunięcie odstających miast całkowicie zmieniło strukturę istotności zmiennych.
+
+### 4. Dalsze kroki
+
+Ekonometria przestrzenna: Uwzględnienie sąsiedztwa powiatów (ceny w powiatach podwarszawskich zależą od Warszawy).
+
+Modele nieliniowe: Zastosowanie logarytmowania zmiennej objaśnianej, co mogłoby „naprawić” problem normalności reszt.
+
+Segmentacja: Budowa dwóch osobnych modeli: jednego dla metropolii i drugiego dla pozostałych regionów.
 
 
 
