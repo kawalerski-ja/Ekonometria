@@ -463,7 +463,7 @@ corrplot(macierz_korelacji,
 <h2>Wnioski z eksploracji danych</h2>
 <p>Z powyższej macierzy wynika, że cena za m² najsilniej dodatnio
 koreluje z liczbą firm (r=0.50), gęstością zaludnienia (0.43) i
-wynagrodzeniami (0.38), a ujemnie z bezrobociem (-0.38). Widać również
+wynagrodzeniami (0.40), a ujemnie z bezrobociem (-0.39). Widać również
 silną zależność (0.69) między gęstością zaludnienia a liczbą firm.</p>
 </div>
 <div id="podział-na-zbiór-treningowy-i-testowy" class="section level2">
@@ -514,20 +514,16 @@ summary(model)</code></pre>
 ## Residual standard error: 1320 on 259 degrees of freedom
 ## Multiple R-squared:  0.3954, Adjusted R-squared:  0.3861 
 ## F-statistic: 42.35 on 4 and 259 DF,  p-value: &lt; 2.2e-16</code></pre>
-<p>Wyniki estymacji KMNK są bardzo obiecujące – model jest istotny
-globalnie, a każda z wprowadzonych zmiennych okazała się istotna
-statystycznie (p-value &lt; 0.05). Na tym etapie nie musimy więc usuwać
-żadnej z nich.</p>
 <p>Zgodnie z zasadą ceteris paribus, otrzymane parametry oznaczają,
 że:</p>
 <p>-Bezrobocie: wzrost o 1 p.p. obniża cenę metra kwadratowego średnio o
-ok. 54 zł.</p>
+ok. 43 zł.</p>
 <p>-Wynagrodzenia: wzrost średniej pensji o 1 zł podnosi cenę za m2 o
-ok. 0,38 zł.</p>
+ok. 0,41 zł.</p>
 <p>-Gęstość zaludnienia: każda dodatkowa osoba na km² to wzrost ceny o
-ok. 0,58 zł.</p>
-<p>-Firmy:jedna dodatkowa firma na 1000 mieszkańców podbija cenę za m2
-średnio o 132 zł.</p>
+ok. 0,60 zł.</p>
+<p>-Firmy: jedna dodatkowa firma na 1000 mieszkańców podbija cenę za m2
+średnio o ok. 207 zł.</p>
 </div>
 <div id="diagnostyka-i-poprawa-modelu" class="section level2">
 <h2>6. Diagnostyka i poprawa modelu</h2>
@@ -609,13 +605,16 @@ objaśniających.</p>
 ## RESET = 1.6285, df1 = 8, df2 = 251, p-value = 0.117</code></pre>
 <p>Wynik testu nie wskazuje na istotność tych składników, co sugeruje,
 że ewentualna niepoprawna specyfikacja modelu nie wynika z prostych
-nieliniowości w postaci kwadratów zmiennych.<br />
+nieliniowości w postaci kwadratów (lub sześcianów) zmiennych.<br />
 Mimo istotności pierwszego testu RESET, zdecydowano się pozostawić
 pierwotną postać modelu ze względu na jego prostotę i
 interpretowalność.</p>
 </div>
 <div id="współliniowość-zmiennych-objaśniających" class="section level3">
 <h3>Współliniowość zmiennych objaśniających</h3>
+<p>W celu sprawdzania, czy zmienne objaśniające są współliniowe,
+posłużono się metodą VIF (Variance Inflation Factor). Ma ona pokazać,
+jak bardzo zwiększa się wariancja w związku z ich skorelowaniem.</p>
 <pre class="r"><code>model &lt;- lm(Cenam2 ~ Bezrobocie + Wynagrodzenia + Ludnosckm2 + Firmy1000os, data = train)
 
 library(car)
@@ -760,7 +759,7 @@ błędu.</p>
 </div>
 </div>
 <div id="analiza-ex-post" class="section level2">
-<h2>Analiza ex-post</h2>
+<h2>7. Analiza ex-post</h2>
 </div>
 </div>
 
