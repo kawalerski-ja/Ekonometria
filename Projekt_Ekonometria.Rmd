@@ -369,8 +369,9 @@ bptest(model, ~y_dop + I(y_dop^2) + I(y_dop^3), data = train)
 train <- subset(train, select = -y_dop)
 ```
 
-Test potwierdza, że nie ma istotnej zależności na poziomie 5%. Wynika z tego,
-że jest spełniony warunek homoskedastyczności.  
+Test wykazał, że zachodzi istotna zależność na poziomie 5%. Wynika z tego,
+że nie jest spełniony warunek homoskedastyczności. Błędy szacunku, mogą być więc 
+źle wyznaczone, a testy statystyczne zaburzone.
 
 #### Wartości odstające
 
