@@ -119,10 +119,7 @@ corrplot(macierz_korelacji,
 
 ## Wnioski z eksploracji danych
 
-Z powyższej macierzy wynika, że cena za m² najsilniej dodatnio koreluje
-z liczbą firm (r=0.50), gęstością zaludnienia (0.43) i wynagrodzeniami
-(0.38), a ujemnie z bezrobociem (-0.38). Widać również silną zależność
-(0.69) między gęstością zaludnienia a liczbą firm.
+Z powyższej macierzy wynika, że cena za m² najsilniej dodatnio koreluje z liczbą firm (r=0.50), gęstością zaludnienia (0.43) i wynagrodzeniami (0.40), a ujemnie z bezrobociem (-0.39). Widać również silną zależność (0.69) między gęstością zaludnienia a liczbą firm.
 
 ## 4. Podział na zbiór treningowy i testowy
 
@@ -158,24 +155,17 @@ model <- lm(Cenam2 ~ Bezrobocie + Wynagrodzenia + Ludnosckm2 + Firmy1000os, data
 summary(model)
 ```
 
-Wyniki estymacji KMNK są bardzo obiecujące – model jest istotny
-globalnie, a każda z wprowadzonych zmiennych okazała się istotna
-statystycznie (p-value \< 0.05). Na tym etapie nie musimy więc usuwać
-żadnej z nich.
+
 
 Zgodnie z zasadą ceteris paribus, otrzymane parametry oznaczają, że:
 
--Bezrobocie: wzrost o 1 p.p. obniża cenę metra kwadratowego średnio o
-ok. 54 zł.
+-Bezrobocie: wzrost o 1 p.p. obniża cenę metra kwadratowego średnio o ok. 43 zł.
 
--Wynagrodzenia: wzrost średniej pensji o 1 zł podnosi cenę za m2 o ok.
-0,38 zł.
+-Wynagrodzenia: wzrost średniej pensji o 1 zł podnosi cenę za m2 o ok. 0,41 zł.
 
--Gęstość zaludnienia: każda dodatkowa osoba na km² to wzrost ceny o ok.
-0,58 zł.
+-Gęstość zaludnienia: każda dodatkowa osoba na km² to wzrost ceny o ok. 0,60 zł.
 
--Firmy:jedna dodatkowa firma na 1000 mieszkańców podbija cenę za m2
-średnio o 132 zł.
+-Firmy: jedna dodatkowa firma na 1000 mieszkańców podbija cenę za m2 średnio o ok. 207 zł.
 
 ## 6. Diagnostyka i poprawa modelu
 
