@@ -247,11 +247,15 @@ resettest(model, type = "regressor", power = 2:3)
 ```
 Wynik testu nie wskazuje na istotność tych składników, co sugeruje, że ewentualna 
 niepoprawna specyfikacja modelu nie wynika z prostych nieliniowości w postaci 
-kwadratów zmiennych.  
+kwadratów (lub sześcianów) zmiennych.  
 Mimo istotności pierwszego testu RESET, zdecydowano się pozostawić pierwotną 
 postać modelu ze względu na jego prostotę i interpretowalność.
 
 ### Współliniowość zmiennych objaśniających
+
+W celu sprawdzania, czy zmienne objaśniające są współliniowe, posłużono się 
+metodą VIF (Variance Inflation Factor). Ma ona pokazać, jak bardzo zwiększa się 
+wariancja w związku z ich skorelowaniem.
 
 ```{r}
 model <- lm(Cenam2 ~ Bezrobocie + Wynagrodzenia + Ludnosckm2 + Firmy1000os, data = train)
