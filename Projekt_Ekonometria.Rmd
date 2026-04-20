@@ -257,7 +257,7 @@ resettest(model, type = "regressor", power = 2:3)
 ```
 Wynik testu nie wskazuje na istotność tych składników, co sugeruje, że ewentualna 
 niepoprawna specyfikacja modelu nie wynika z prostych nieliniowości w postaci 
-kwadratów zmiennych.  
+kwadratów (lub sześcianów) zmiennych.  
 Mimo istotności pierwszego testu RESET, zdecydowano się pozostawić pierwotną 
 postać modelu ze względu na jego prostotę i interpretowalność.
 
